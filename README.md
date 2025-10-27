@@ -3,3 +3,8 @@
 
 # Task Based Compilation for Microsoft Dynamics AX 2009
 
+This solution enables AOT objects compilation based on tasks.
+
+The source code contains the following classes:
+- TaskBasedCompileProcessCreator - used for task generation;
+- TaskBasedCompileWorker - used for allocating tasks to worker client AX sessions.
