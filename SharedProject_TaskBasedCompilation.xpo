@@ -1,6 +1,23 @@
 ﻿Exportfile for AOT version 1.0 or later
 Formatversion: 1
 
+***Element: MCR
+
+; Microsoft Dynamics AX Macro: TaskBasedCompilation выгружен
+; --------------------------------------------------------------------------------
+  JOBVERSION 1
+  
+  SOURCE #TaskBasedCompilation
+    #// Sergey Barkar, 25/07/2026 N
+    ##DEFINE.LIKECONFIGURATIONFILE('*.axc')
+    ##DEFINE.CONFIGURATIONSHIELDING('"\%1"')
+    ##DEFINE.STARTUPCMD_TASKBASEDCOMPILE('taskbasedcompile')
+    ##DEFINE.STARTUPCMD_PARAM_WORKER('worker')
+    ##DEFINE.PARAMETERS_SEPARATOR(':')
+    ##DEFINE.PROGRESSBARTEXT('Компиляция')
+    ##DEFINE.STARTUPCOMMAND_FORMAT(' -startupcmd=\%1_\%2 -INTERNAL=NOMODALBOXES')
+  ENDSOURCE
+
 ***Element: JOB
 
 ; Microsoft Dynamics AX Job: TaskBasedCompileProcessCreate выгружен
@@ -30,6 +47,157 @@ Formatversion: 1
     #    new TaskBasedCompileWorker().run();
     #}
   ENDSOURCE
+
+***Element: CLS
+
+; Microsoft Dynamics AX Class: SysStartUpCmdTaskBasedCompile выгружен
+; --------------------------------------------------------------------------------
+  CLSVERSION 1
+  
+  CLASS #SysStartUpCmdTaskBasedCompile
+    PROPERTIES
+      Name                #SysStartUpCmdTaskBasedCompile
+      Extends             #SysStartupCmd
+      RunOn               #Called from
+    ENDPROPERTIES
+    
+    METHODS
+      Version: 3
+      SOURCE #awaitWorkers
+        #private void awaitWorkers(List _processes)
+        #{
+        #    SysOperationProgress progress = SysOperationProgress::newGeneral(#AviUpdate, #PROGRESSBARTEXT, TaskBasedCompileProcess::getCountByStatus(TaskBasedCompileProcessStatus::Idle));
+        #    #DEFINE.FIVESECONDS(5000)
+        #    ;
+        #
+        #    do
+        #    {
+        #        progress.setCount(TaskBasedCompileProcess::getCountByStatus(TaskBasedCompileProcessStatus::Done));
+        #
+        #        sleep(#FIVESECONDS);
+        #        infolog.yield();
+        #    }
+        #    while (progress.getCount_RU() != progress.getTotal());
+        #
+        #    progress.reset();
+        #    progress = null;
+        #}
+      ENDSOURCE
+      SOURCE #classDeclaration
+        #// Sergey Barkar, 25/07/2026 N
+        #class SysStartUpCmdTaskBasedCompile extends SysStartupCmd
+        #{
+        #    #TaskBasedCompilation
+        #    #AVIFILES
+        #}
+      ENDSOURCE
+      SOURCE #executeWorkerProcess
+        #private int executeWorkerProcess(FileName _workerClientFileName,
+        #                                str      _workerClientParameters)
+        #{
+        #    #WinAPI
+        #    #DEFINE.DUMMY('')
+        #    ;
+        #
+        #    return WinAPI::shellExecute(_workerClientFileName, _workerClientParameters, #DUMMY, #ShellExeOpen, #SW_HIDE, false);
+        #}
+      ENDSOURCE
+      SOURCE #executeWorkers
+        #private List executeWorkers(int _workers)
+        #{
+        #    List     processes              = new List(Types::Integer);
+        #    str      workerClientParameters = this.getWorkerProcessParameters();
+        #    FileName workerClientFileName   = xInfo::componentName();
+        #    #DEFINE.ZERO(0)
+        #    ;
+        #
+        #    while (_workers > #ZERO)
+        #    {
+        #        processes.addEnd(this.executeWorkerProcess(workerClientFileName, workerClientParameters));
+        #        _workers--;
+        #    }
+        #
+        #    return processes;
+        #}
+      ENDSOURCE
+      SOURCE #exportResult
+        #private void exportResult()
+        #{
+        #    ;
+        #
+        #    TaskBasedCompileResult::importIntoCompilerOutput();
+        #
+        #    SysCompilerOutput::exportLog();
+        #}
+      ENDSOURCE
+      SOURCE #getWorkerProcessParameters
+        #private str getWorkerProcessParameters()
+        #{
+        #    System.String[]                args       = System.Environment::GetCommandLineArgs();
+        #    System.Collections.IEnumerator enumerator = args.GetEnumerator();
+        #    str                            strParameter,
+        #                                   ret;
+        #    ;
+        #
+        #    while (!ret && enumerator.MoveNext())
+        #    {
+        #        strParameter = enumerator.get_Current();
+        #
+        #        if (strParameter like #LIKECONFIGURATIONFILE)
+        #        {
+        #            ret = strFmt(#CONFIGURATIONSHIELDING, strParameter);
+        #        }
+        #    }
+        #
+        #    ret += strFmt(#STARTUPCOMMAND_FORMAT, #STARTUPCMD_TASKBASEDCOMPILE, #STARTUPCMD_PARAM_WORKER);
+        #
+        #    return ret;
+        #}
+      ENDSOURCE
+      SOURCE #infoRun
+        #private void infoRun()
+        #{
+        #    ;
+        #
+        #    switch (parm)
+        #    {
+        #        case #STARTUPCMD_PARAM_WORKER :
+        #            this.runWorker();
+        #            break;
+        #        default :
+        #            this.runCoordinator();
+        #            break;
+        #    }
+        #
+        #    this.shutDown();
+        #}
+      ENDSOURCE
+      SOURCE #runCoordinator
+        #private void runCoordinator()
+        #{
+        #    int workers,
+        #        nodesPerTask;
+        #    ;
+        #
+        #    [workers, nodesPerTask] = str2con(parm, #PARAMETERS_SEPARATOR);
+        #
+        #    new TaskBasedCompileProcessCreator(nodesPerTask).run();
+        #
+        #    this.awaitWorkers(this.executeWorkers(workers));
+        #
+        #    this.exportResult();
+        #}
+      ENDSOURCE
+      SOURCE #runWorker
+        #private void runWorker()
+        #{
+        #    ;
+        #
+        #    new TaskBasedCompileWorker().run();
+        #}
+      ENDSOURCE
+    ENDMETHODS
+  ENDCLASS
 
 ***Element: CLS
 
@@ -241,6 +409,7 @@ Formatversion: 1
         #    ;
         #
         #    TaskBasedCompileProcess::clear();
+        #
         #    this.create();
         #}
       ENDSOURCE
@@ -421,6 +590,50 @@ Formatversion: 1
     
     METHODS
       Version: 3
+      SOURCE #writeIntoCompilerOutput
+        #private void writeIntoCompilerOutput(TmpCompilerOutput _compilerOutputCursor)
+        #{
+        #    XmlDocument         xmlDocument = new XmlDocument();
+        #    TmpCompilerOutput   tmp;
+        #    ;
+        #
+        #    if (xmlDocument.loadXml(this.XML))
+        #    {
+        #        Global::recordFromXMLNode(xmlDocument.documentElement(), tmp);
+        #    }
+        #
+        #    if (tmp.TreeNodePath)
+        #    {
+        #        select firstonly _compilerOutputCursor
+        #            index PathIdx
+        #            where _compilerOutputCursor.TreeNodePath            == tmp.TreeNodePath
+        #               && _compilerOutputCursor.Line                    == tmp.Line
+        #               && _compilerOutputCursor.Column                  == tmp.Column
+        #               && _compilerOutputCursor.CompileErrorCode        == tmp.CompileErrorCode
+        #               && _compilerOutputCursor.SysPropertyName         == tmp.SysPropertyName
+        #               && _compilerOutputCursor.SysCompilerOutputTab    == tmp.SysCompilerOutputTab;
+        #
+        #        _compilerOutputCursor.TreeNodePath             = tmp.TreeNodePath;
+        #        _compilerOutputCursor.Line                     = tmp.Line;
+        #        _compilerOutputCursor.Column                   = tmp.Column;
+        #        _compilerOutputCursor.CompileErrorCode         = tmp.CompileErrorCode;
+        #
+        #        _compilerOutputCursor.CompileErrorString       = tmp.CompileErrorString;
+        #        _compilerOutputCursor.UtilElementType          = tmp.UtilElementType;
+        #        _compilerOutputCursor.SysUtilElementName       = tmp.SysUtilElementName;
+        #        _compilerOutputCursor.SysCompilerSeverity      = tmp.SysCompilerSeverity;
+        #        _compilerOutputCursor.CompileErrorImage        = tmp.CompileErrorImage;
+        #        _compilerOutputCursor.LatestCompile            = true;
+        #        _compilerOutputCursor.SysPropertyName          = tmp.SysPropertyName;
+        #        _compilerOutputCursor.SysCompilerOutputTab     = tmp.SysCompilerOutputTab;
+        #        _compilerOutputCursor.SysCompileErrorMessage   = tmp.SysCompileErrorMessage;
+        #        _compilerOutputCursor.SysAotMethodName         = tmp.SysAotMethodName;
+        #        _compilerOutputCursor.UtilElementImage         = tmp.UtilElementImage;
+        #        _compilerOutputCursor.CompileErrorCode         = tmp.CompileErrorCode;
+        #        _compilerOutputCursor.write();
+        #    }
+        #}
+      ENDSOURCE
       SOURCE #createFromCompilerOutput
         #// Sergey Barkar, 26/10/2025 N
         #public static void createFromCompilerOutput(TmpCompilerOutput _compilerOutputCursor)
@@ -435,6 +648,27 @@ Formatversion: 1
         #    {
         #        result.XML = _compilerOutputCursor.xml();
         #        result.insert();
+        #    }
+        #}
+      ENDSOURCE
+      SOURCE #importIntoCompilerOutput
+        #public static void importIntoCompilerOutput()
+        #{
+        #    SysCompilerOutput      compilerOutputObject = SysDictClass::as(infolog.compilerOutput(), classNum(SysCompilerOutput));
+        #    TaskBasedCompileResult compileResult;
+        #    ;
+        #
+        #    if (compilerOutputObject)
+        #    {
+        #        compilerOutputObject.reset(true);
+        #
+        #        while select compileResult
+        #        {
+        #            compileResult.writeIntoCompilerOutput(compilerOutputObject.compilerOutput());
+        #        }
+        #
+        #        compilerOutputObject.endCompilation();
+        #        compilerOutputObject.updateCounters();
         #    }
         #}
       ENDSOURCE
@@ -621,6 +855,15 @@ Formatversion: 1
         #    ttsCommit;
         #}
       ENDSOURCE
+      SOURCE #getCountByStatus
+        #public static server int64 getCountByStatus(TaskBasedCompileProcessStatus _status)
+        #{
+        #    ;
+        #
+        #    return (select count(RecId) from TaskBasedCompileProcess
+        #                where TaskBasedCompileProcess.Status == _status).RecId;
+        #}
+      ENDSOURCE
       SOURCE #newId
         #// Sergey Barkar, 26/10/2025 N
         #public static RecId newId()
@@ -649,7 +892,7 @@ Formatversion: 1
       Name                #TaskBasedCompileWorkLoadData
       TitleField1         #ParentNodePath
       TitleField2         #SessionId
-      MaxAccessMode       #NoAccess
+      MaxAccessMode       #View
       SaveDataPerCompany  #No
       TableGroup          #WorksheetLine
       PrimaryIndex        #Primary_Idx
@@ -798,6 +1041,23 @@ Formatversion: 1
   ENDPROPERTIES
   
     PROJECTCLASS ProjectNode
+    GROUP #Macros
+      PROPERTIES
+        Name                #Macros
+        ProjectGroupType    #Macros
+        GroupMask           #
+        PreventEditProperties #No
+      ENDPROPERTIES
+      
+      BEGINNODE
+        FILETYPE 0
+        UTILTYPE 4
+        UTILOBJECTID 0
+        NODETYPE 218
+        NAME #TaskBasedCompilation
+      ENDNODE
+      ENDGROUP
+      
     GROUP #Jobs
       PROPERTIES
         Name                #Jobs
@@ -830,6 +1090,13 @@ Formatversion: 1
         PreventEditProperties #No
       ENDPROPERTIES
       
+      BEGINNODE
+        FILETYPE 0
+        UTILTYPE 45
+        UTILOBJECTID 35201
+        NODETYPE 329
+        NAME #SysStartUpCmdTaskBasedCompile
+      ENDNODE
       BEGINNODE
         FILETYPE 0
         UTILTYPE 45
