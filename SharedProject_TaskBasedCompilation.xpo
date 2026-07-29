@@ -50,21 +50,136 @@ Formatversion: 1
 
 ***Element: CLS
 
-; Microsoft Dynamics AX Class: SysStartUpCmdTaskBasedCompile выгружен
+; Microsoft Dynamics AX Class: TaskBasedCompileCoordinationResult выгружен
 ; --------------------------------------------------------------------------------
   CLSVERSION 1
   
-  CLASS #SysStartUpCmdTaskBasedCompile
+  CLASS #TaskBasedCompileCoordinationResult
     PROPERTIES
-      Name                #SysStartUpCmdTaskBasedCompile
-      Extends             #SysStartupCmd
+      Name                #TaskBasedCompileCoordinationResult
+      Extends             #
+      RunOn               #Called from
+    ENDPROPERTIES
+    
+    METHODS
+      Version: 3
+      SOURCE #classDeclaration
+        #// Sergey Barkar, 29/07/2026 N
+        #class TaskBasedCompileCoordinationResult
+        #{
+        #}
+      ENDSOURCE
+      SOURCE #importIntoCompilerOutput
+        #private void importIntoCompilerOutput()
+        #{
+        #    SysCompilerOutput      compilerOutputObject = SysDictClass::as(infolog.compilerOutput(), classNum(SysCompilerOutput));
+        #    TmpCompilerOutput      compilerOutput;
+        #    TaskBasedCompileResult compileResult;
+        #    ;
+        #
+        #    if (compilerOutputObject)
+        #    {
+        #        compilerOutputObject.reset(true);
+        #
+        #        compilerOutput = compilerOutputObject.compilerOutput();
+        #
+        #        while select compileResult
+        #        {
+        #            this.writeIntoCompilerOutput(compileResult.XML, compilerOutput);
+        #        }
+        #
+        #        compilerOutputObject.endCompilation();
+        #        compilerOutputObject.updateCounters();
+        #    }
+        #}
+      ENDSOURCE
+      SOURCE #publish
+        #public void publish()
+        #{
+        #    ;
+        #
+        #    this.viewInfologs();
+        #    this.importIntoCompilerOutput();
+        #
+        #    SysCompilerOutput::exportLog();
+        #}
+      ENDSOURCE
+      SOURCE #viewInfologs
+        #private void viewInfologs()
+        #{
+        #    TaskBasedCompileProcess process;
+        #    ;
+        #
+        #    while select process
+        #    {
+        #        infolog.viewBuild(process.Infologs);
+        #    }
+        #}
+      ENDSOURCE
+      SOURCE #writeIntoCompilerOutput
+        #private void writeIntoCompilerOutput(str _xml, TmpCompilerOutput _compilerOutputCursor)
+        #{
+        #    XmlDocument         xmlDocument = new XmlDocument();
+        #    TmpCompilerOutput   tmp;
+        #    ;
+        #
+        #    if (xmlDocument.loadXml(_xml))
+        #    {
+        #        Global::recordFromXMLNode(xmlDocument.documentElement(), tmp);
+        #    }
+        #
+        #    if (tmp.TreeNodePath)
+        #    {
+        #        select firstonly _compilerOutputCursor
+        #            index PathIdx
+        #            where _compilerOutputCursor.TreeNodePath            == tmp.TreeNodePath
+        #               && _compilerOutputCursor.Line                    == tmp.Line
+        #               && _compilerOutputCursor.Column                  == tmp.Column
+        #               && _compilerOutputCursor.CompileErrorCode        == tmp.CompileErrorCode
+        #               && _compilerOutputCursor.SysPropertyName         == tmp.SysPropertyName
+        #               && _compilerOutputCursor.SysCompilerOutputTab    == tmp.SysCompilerOutputTab;
+        #
+        #        _compilerOutputCursor.TreeNodePath             = tmp.TreeNodePath;
+        #        _compilerOutputCursor.Line                     = tmp.Line;
+        #        _compilerOutputCursor.Column                   = tmp.Column;
+        #        _compilerOutputCursor.CompileErrorCode         = tmp.CompileErrorCode;
+        #
+        #        _compilerOutputCursor.CompileErrorString       = tmp.CompileErrorString;
+        #        _compilerOutputCursor.UtilElementType          = tmp.UtilElementType;
+        #        _compilerOutputCursor.SysUtilElementName       = tmp.SysUtilElementName;
+        #        _compilerOutputCursor.SysCompilerSeverity      = tmp.SysCompilerSeverity;
+        #        _compilerOutputCursor.CompileErrorImage        = tmp.CompileErrorImage;
+        #        _compilerOutputCursor.LatestCompile            = true;
+        #        _compilerOutputCursor.SysPropertyName          = tmp.SysPropertyName;
+        #        _compilerOutputCursor.SysCompilerOutputTab     = tmp.SysCompilerOutputTab;
+        #        _compilerOutputCursor.SysCompileErrorMessage   = tmp.SysCompileErrorMessage;
+        #        _compilerOutputCursor.SysAotMethodName         = tmp.SysAotMethodName;
+        #        _compilerOutputCursor.UtilElementImage         = tmp.UtilElementImage;
+        #        _compilerOutputCursor.CompileErrorCode         = tmp.CompileErrorCode;
+        #        _compilerOutputCursor.write();
+        #    }
+        #}
+      ENDSOURCE
+    ENDMETHODS
+  ENDCLASS
+
+***Element: CLS
+
+; Microsoft Dynamics AX Class: TaskBasedCompileCoordinator выгружен
+; --------------------------------------------------------------------------------
+  CLSVERSION 1
+  
+  CLASS #TaskBasedCompileCoordinator
+    PROPERTIES
+      Name                #TaskBasedCompileCoordinator
+      Extends             #
       RunOn               #Called from
     ENDPROPERTIES
     
     METHODS
       Version: 3
       SOURCE #awaitWorkers
-        #private void awaitWorkers(List _processes)
+        #public TaskBasedCompileCoordinationResult awaitWorkers()
         #{
         #    SysOperationProgress progress = SysOperationProgress::newGeneral(#AviUpdate, #PROGRESSBARTEXT, TaskBasedCompileProcess::getCountByStatus(TaskBasedCompileProcessStatus::Idle));
         #    #DEFINE.FIVESECONDS(5000)
@@ -81,19 +196,31 @@ Formatversion: 1
         #
         #    progress.reset();
         #    progress = null;
+        #
+        #    return new TaskBasedCompileCoordinationResult();
         #}
       ENDSOURCE
       SOURCE #classDeclaration
-        #// Sergey Barkar, 25/07/2026 N
-        #class SysStartUpCmdTaskBasedCompile extends SysStartupCmd
+        #// Sergey Barkar, 29/07/2026 N
+        #class TaskBasedCompileCoordinator
         #{
+        #    List workerProcessIds;
+        #
+        #    #AviFiles
         #    #TaskBasedCompilation
-        #    #AVIFILES
+        #}
+      ENDSOURCE
+      SOURCE #createTasks
+        #private void createTasks(int _nodesPerTask)
+        #{
+        #    ;
+        #
+        #    new TaskBasedCompileProcessCreator(_nodesPerTask).run();
         #}
       ENDSOURCE
       SOURCE #executeWorkerProcess
         #private int executeWorkerProcess(FileName _workerClientFileName,
-        #                                str      _workerClientParameters)
+        #                                 str      _workerClientParameters)
         #{
         #    #WinAPI
         #    #DEFINE.DUMMY('')
@@ -103,31 +230,26 @@ Formatversion: 1
         #}
       ENDSOURCE
       SOURCE #executeWorkers
-        #private List executeWorkers(int _workers)
+        #public void executeWorkers(int _count)
         #{
-        #    List     processes              = new List(Types::Integer);
         #    str      workerClientParameters = this.getWorkerProcessParameters();
         #    FileName workerClientFileName   = xInfo::componentName();
         #    #DEFINE.ZERO(0)
         #    ;
         #
-        #    while (_workers > #ZERO)
+        #    while (_count > #ZERO)
         #    {
-        #        processes.addEnd(this.executeWorkerProcess(workerClientFileName, workerClientParameters));
-        #        _workers--;
+        #        workerProcessIds.addEnd(this.executeWorkerProcess(workerClientFileName, workerClientParameters));
+        #        _count--;
         #    }
-        #
-        #    return processes;
         #}
       ENDSOURCE
-      SOURCE #exportResult
-        #private void exportResult()
+      SOURCE #finalize
+        #public void finalize()
         #{
         #    ;
         #
-        #    TaskBasedCompileResult::importIntoCompilerOutput();
-        #
-        #    SysCompilerOutput::exportLog();
+        #    workerProcessIds = null;
         #}
       ENDSOURCE
       SOURCE #getWorkerProcessParameters
@@ -154,6 +276,51 @@ Formatversion: 1
         #    return ret;
         #}
       ENDSOURCE
+      SOURCE #new
+        #public void new()
+        #{
+        #    ;
+        #
+        #    workerProcessIds = new List(Types::Integer);
+        #}
+      ENDSOURCE
+      SOURCE #tryToCreateTasks
+        #public boolean tryToCreateTasks(int _nodesPerTask)
+        #{
+        #    ;
+        #
+        #    this.createTasks(_nodesPerTask);
+        #
+        #    return (select firstOnly RecId from TaskBasedCompileProcess
+        #            where TaskBasedCompileProcess.Status == TaskBasedCompileProcessStatus::Idle).RecId;
+        #}
+      ENDSOURCE
+    ENDMETHODS
+  ENDCLASS
+
+***Element: CLS
+
+; Microsoft Dynamics AX Class: SysStartUpCmdTaskBasedCompile выгружен
+; --------------------------------------------------------------------------------
+  CLSVERSION 1
+  
+  CLASS #SysStartUpCmdTaskBasedCompile
+    PROPERTIES
+      Name                #SysStartUpCmdTaskBasedCompile
+      Extends             #SysStartupCmd
+      RunOn               #Called from
+    ENDPROPERTIES
+    
+    METHODS
+      Version: 3
+      SOURCE #classDeclaration
+        #// Sergey Barkar, 25/07/2026 N
+        #class SysStartUpCmdTaskBasedCompile extends SysStartupCmd
+        #{
+        #    #TaskBasedCompilation
+        #    #AVIFILES
+        #}
+      ENDSOURCE
       SOURCE #infoRun
         #private void infoRun()
         #{
@@ -175,17 +342,31 @@ Formatversion: 1
       SOURCE #runCoordinator
         #private void runCoordinator()
         #{
-        #    int workers,
-        #        nodesPerTask;
+        #    TaskBasedCompileCoordinator coordinator = new TaskBasedCompileCoordinator();
+        #    int                         workerCount,
+        #                                nodesPerTask;
+        #    boolean                     isXRefEnabled = xUserInfo::debugInfo_XReferences();
         #    ;
         #
-        #    [workers, nodesPerTask] = str2con(parm, #PARAMETERS_SEPARATOR);
+        #    [workerCount, nodesPerTask] = str2con(parm, #PARAMETERS_SEPARATOR);
         #
-        #    new TaskBasedCompileProcessCreator(nodesPerTask).run();
+        #    if (isXRefEnabled)
+        #    {
+        #        xUserInfo::debugInfo_XReferences(false);
+        #    }
         #
-        #    this.awaitWorkers(this.executeWorkers(workers));
+        #    if (coordinator.tryToCreateTasks(nodesPerTask))
+        #    {
+        #        coordinator.executeWorkers(workerCount);
+        #        coordinator.awaitWorkers().publish();
+        #    }
         #
-        #    this.exportResult();
+        #    coordinator.finalize();
+        #
+        #    if (isXRefEnabled)
+        #    {
+        #        xUserInfo::debugInfo_XReferences(true);
+        #    }
         #}
       ENDSOURCE
       SOURCE #runWorker
@@ -221,62 +402,73 @@ Formatversion: 1
         #}
       ENDSOURCE
       SOURCE #compile
-        #private void compile(TaskBasedCompileWorkLoadData _dataRecord)
+        #private void compile(TaskBasedCompileWorkRange _workRangeRecord)
         #{
-        #    TreeNode      parentNode = TreeNode::findNode(_dataRecord.ParentNodePath);
+        #    TreeNode      parentNode = TreeNode::findNode(_workRangeRecord.ParentNodePath);
         #    TreeNode      compileNode;
         #    int           compiledNodes;
         #    ;
         #
-        #    for (compileNode = parentNode.AOTfindChild(_dataRecord.FirstNodeName); compileNode && compiledNodes != _dataRecord.NodesToCompile; compileNode = compileNode.AOTnextSibling())
+        #    for (compileNode = parentNode.AOTfindChild(_workRangeRecord.StartNodeName); compileNode && compiledNodes != _workRangeRecord.NodesToCompile; compileNode = compileNode.AOTnextSibling())
         #    {
-        #        compileNode.AOTcompile(_dataRecord.IsSkipOutput, true);
+        #        compileNode.AOTcompile(_workRangeRecord.IsSkipOutput, true);
         #        compiledNodes++;
-        #    }
-        #
-        #    if (!_dataRecord.IsSkipOutput)
-        #    {
-        #        this.handleOutput();
         #    }
         #}
       ENDSOURCE
       SOURCE #handleOutput
-        #private void handleOutput()
+        #private void handleOutput(RecId _processId)
         #{
-        #    SysCompilerOutput   compilerOutputObject = SysDictClass::as(infolog.compilerOutput(), classNum(SysCompilerOutput));
+        #    SysCompilerOutput compilerOutputObject = SysDictClass::as(infolog.compilerOutput(), classNum(SysCompilerOutput));
         #    ;
         #
         #    if (compilerOutputObject)
         #    {
-        #        TaskBasedCompileResult::createFromCompilerOutput(compilerOutputObject.compilerOutput());
+        #        TaskBasedCompileResult::createFromCompilerOutput(_processId, compilerOutputObject.compilerOutput());
         #
         #        compilerOutputObject.reset(true);
         #    }
         #}
       ENDSOURCE
+      SOURCE #handleProcess
+        #private boolean handleProcess(TaskBasedCompileProcess _processRecord)
+        #{
+        #    TaskBasedCompileWorkRange workRangeRecord = _processRecord.getWorkRange();
+        #    ;
+        #
+        #    if (workRangeRecord.RecId)
+        #    {
+        #        this.compile(workRangeRecord);
+        #
+        #        if (!workRangeRecord.IsSkipOutput)
+        #        {
+        #            this.handleOutput(_processRecord.RecId);
+        #        }
+        #    }
+        #
+        #    _processRecord.setDone();
+        #
+        #    return _processRecord.RecId;
+        #}
+      ENDSOURCE
       SOURCE #run
         #public void run()
         #{
-        #    TaskBasedCompileProcess      processCursor;
-        #    TaskBasedCompileWorkLoadData dataCursor;
+        #    boolean isKeepRunning;
+        #    #DEFINE.DUMMY('')
         #    ;
         #
         #    WinApi::showWindow(infolog.hWnd(), false);
         #
+        #    infolog.globalCache().set(classStr(SysCompileAll), #DUMMY, !appl.isRunningMode());
+        #
         #    do
         #    {
-        #        processCursor = TaskBasedCompileProcess::allocate();
-        #
-        #        dataCursor = processCursor.getWorkLoadData();
-        #
-        #        if (dataCursor.RecId)
-        #        {
-        #            this.compile(dataCursor);
-        #        }
-        #
-        #        processCursor.setDone();
+        #        isKeepRunning = this.handleProcess(TaskBasedCompileProcess::allocate());
         #    }
-        #    while (processCursor.RecId);
+        #    while (isKeepRunning);
+        #
+        #    SysCompileAll::clearCompileAllFlags();
         #
         #    WinApi::showWindow(infolog.hWnd(), true);
         #}
@@ -303,7 +495,6 @@ Formatversion: 1
         #// Sergey Barkar, 26/10/2025 N
         #class TaskBasedCompileProcessCreator
         #{
-        #    List dataList;
         #    int  nodesPerTask;
         #
         #    #DEFINE.AOTNODE_DATADICTIONARY('Data Dictionary')
@@ -319,65 +510,64 @@ Formatversion: 1
       SOURCE #create
         #private void create()
         #{
-        #    TreeNode rootNode = TreeNode::rootNode();
+        #    TreeNode rootNode   = TreeNode::rootNode();
+        #    List     workRanges = new List(Types::Record);
         #    ;
         #
-        #    dataList = new List(Types::Record);
+        #    this.create_DataDictionary(workRanges, rootNode.AOTfindChild(#AOTNODE_DATADICTIONARY));
         #
-        #    this.create_DataDictionary(rootNode.AOTfindChild(#AOTNODE_DATADICTIONARY));
+        #    this.createDataByNodes(workRanges, rootNode.AOTfindChild(#AOTNODE_QUERIES));
+        #    this.createDataByNodes(workRanges, rootNode.AOTfindChild(#AOTNODE_CLASSES));
+        #    this.createDataByNodes(workRanges, rootNode.AOTfindChild(#AOTNODE_FORMS));
         #
-        #    this.createDataByNodes(rootNode.AOTfindChild(#AOTNODE_QUERIES));
-        #    this.createDataByNodes(rootNode.AOTfindChild(#AOTNODE_CLASSES));
-        #    this.createDataByNodes(rootNode.AOTfindChild(#AOTNODE_FORMS));
+        #    this.saveData(workRanges);
         #
-        #    this.saveData(dataList);
-        #
-        #    dataList = null;
+        #    workRanges = null;
         #}
       ENDSOURCE
       SOURCE #create_DataDictionary
-        #private void create_DataDictionary(TreeNode _dataDictionaryNode)
+        #private void create_DataDictionary(List _workRanges, TreeNode _dataDictionaryNode)
         #{
         #    ;
         #
-        #    this.createDataByNodes(_dataDictionaryNode.AOTfindChild(#AOTNODE_DATADICTIONARY_TABLES));
-        #    this.createDataByNodes(_dataDictionaryNode.AOTfindChild(#AOTNODE_DATADICTIONARY_MAPS));
-        #    this.createDataByNodes(_dataDictionaryNode.AOTfindChild(#AOTNODE_DATADICTIONARY_VIEWS));
+        #    this.createDataByNodes(_workRanges, _dataDictionaryNode.AOTfindChild(#AOTNODE_DATADICTIONARY_TABLES));
+        #    this.createDataByNodes(_workRanges, _dataDictionaryNode.AOTfindChild(#AOTNODE_DATADICTIONARY_MAPS));
+        #    this.createDataByNodes(_workRanges, _dataDictionaryNode.AOTfindChild(#AOTNODE_DATADICTIONARY_VIEWS));
         #}
       ENDSOURCE
       SOURCE #createDataByNodes
-        #private void createDataByNodes(TreeNode _nodes)
+        #private void createDataByNodes(List _workRanges, TreeNode _parentNode)
         #{
-        #    TreeNodeIterator             nodeIterator = _nodes.AOTiterator();
-        #    TreeNode                     nodeToCreate = nodeIterator.next();
-        #    TaskBasedCompileWorkLoadData dataBuffer;
+        #    TreeNodeIterator          nodeIterator  = _parentNode.AOTiterator();
+        #    TreeNode                  nodeToCompile = nodeIterator.next();
+        #    TaskBasedCompileWorkRange workRangeBuffer;
         #    ;
         #
-        #    dataBuffer.IsSkipOutput   = true;
-        #    dataBuffer.ParentNodePath = _nodes.treeNodePath();
+        #    workRangeBuffer.IsSkipOutput   = true;
+        #    workRangeBuffer.ParentNodePath = _parentNode.treeNodePath();
         #
-        #    dataBuffer.intNewTaskId();
-        #    dataBuffer.initFromTreeNode(nodeToCreate);
+        #    workRangeBuffer.generateNewProcessId();
+        #    workRangeBuffer.initFromTreeNode(nodeToCompile);
         #
         #    do
         #    {
-        #        if (dataBuffer.isOverload(nodesPerTask))
+        #        if (workRangeBuffer.isOverload(nodesPerTask))
         #        {
-        #            dataList.addEnd(dataBuffer);
+        #            _workRanges.addEnd(workRangeBuffer);
         #
-        #            dataBuffer.intNewTaskId();
-        #            dataBuffer.initFromTreeNode(nodeToCreate);
+        #            workRangeBuffer.generateNewProcessId();
+        #            workRangeBuffer.initFromTreeNode(nodeToCompile);
         #        }
         #
-        #        dataBuffer.NodesToCompile++;
+        #        workRangeBuffer.NodesToCompile++;
         #
-        #        nodeToCreate = nodeIterator.next();
+        #        nodeToCompile = nodeIterator.next();
         #    }
-        #    while (nodeToCreate);
+        #    while (nodeToCompile);
         #
-        #    if (dataBuffer.NodesToCompile)
+        #    if (workRangeBuffer.NodesToCompile)
         #    {
-        #        dataList.addEnd(dataBuffer);
+        #        _workRanges.addEnd(workRangeBuffer);
         #    }
         #}
       ENDSOURCE
@@ -408,7 +598,7 @@ Formatversion: 1
         #{
         #    ;
         #
-        #    TaskBasedCompileProcess::clear();
+        #    TaskBasedCompileProcess::deleteAll();
         #
         #    this.create();
         #}
@@ -416,21 +606,21 @@ Formatversion: 1
       SOURCE #saveData
         #private void saveData(List _dataList)
         #{
-        #    ListEnumerator               dataEnumerator = _dataList.getEnumerator();
-        #    RecordInsertList             insertDataList = new RecordInsertList(tableNum(TaskBasedCompileWorkLoadData));
-        #    TaskBasedCompileWorkLoadData dataBuffer;
+        #    ListEnumerator            dataEnumerator = _dataList.getEnumerator();
+        #    RecordInsertList          insertDataList = new RecordInsertList(tableNum(TaskBasedCompileWorkRange));
+        #    TaskBasedCompileWorkRange workRangeBuffer;
         #    ;
         #
         #    while (dataEnumerator.moveNext())
         #    {
-        #        dataBuffer = dataEnumerator.current();
+        #        workRangeBuffer = dataEnumerator.current();
         #
-        #        insertDataList.add(dataBuffer);
+        #        insertDataList.add(workRangeBuffer);
         #
-        #        dataBuffer.intNewTaskId();
-        #        dataBuffer.IsSkipOutput = false;
+        #        workRangeBuffer.generateNewProcessId();
+        #        workRangeBuffer.IsSkipOutput = false;
         #
-        #        insertDataList.add(dataBuffer);
+        #        insertDataList.add(workRangeBuffer);
         #    }
         #
         #    insertDataList.insertDatabase();
@@ -542,6 +732,7 @@ Formatversion: 1
   TABLE #TaskBasedCompileResult
     PROPERTIES
       Name                #TaskBasedCompileResult
+      MaxAccessMode       #View
       SaveDataPerCompany  #No
       ClusterIndex        #Cluster_Idx
     ENDPROPERTIES
@@ -567,6 +758,15 @@ Formatversion: 1
           EnumType            #SysCompilerSeverity
         ENDPROPERTIES
         
+      FIELD #ProcessId
+        INT64
+        PROPERTIES
+          Name                #ProcessId
+          AllowEditOnCreate   #No
+          AllowEdit           #No
+          Table               #TaskBasedCompileResult
+        ENDPROPERTIES
+        
     ENDFIELDS
     GROUPS
     ENDGROUPS
@@ -578,11 +778,27 @@ Formatversion: 1
       ENDPROPERTIES
       
       INDEXFIELDS
+        #ProcessId
         #Severity
       ENDINDEXFIELDS
       
     ENDINDICES
     REFERENCES
+      REFERENCE #TaskBasedCompileProcess
+        PROPERTIES
+          Name                #TaskBasedCompileProcess
+          Table               #TaskBasedCompileProcess
+        ENDPROPERTIES
+        
+        FIELDREFERENCES
+          REFERENCETYPE NORMAL
+          PROPERTIES
+            Field               #ProcessId
+            RelatedField        #RecId
+          ENDPROPERTIES
+          
+        ENDFIELDREFERENCES
+      ENDREFERENCE
     ENDREFERENCES
     
     DELETEACTIONS
@@ -590,85 +806,21 @@ Formatversion: 1
     
     METHODS
       Version: 3
-      SOURCE #writeIntoCompilerOutput
-        #private void writeIntoCompilerOutput(TmpCompilerOutput _compilerOutputCursor)
-        #{
-        #    XmlDocument         xmlDocument = new XmlDocument();
-        #    TmpCompilerOutput   tmp;
-        #    ;
-        #
-        #    if (xmlDocument.loadXml(this.XML))
-        #    {
-        #        Global::recordFromXMLNode(xmlDocument.documentElement(), tmp);
-        #    }
-        #
-        #    if (tmp.TreeNodePath)
-        #    {
-        #        select firstonly _compilerOutputCursor
-        #            index PathIdx
-        #            where _compilerOutputCursor.TreeNodePath            == tmp.TreeNodePath
-        #               && _compilerOutputCursor.Line                    == tmp.Line
-        #               && _compilerOutputCursor.Column                  == tmp.Column
-        #               && _compilerOutputCursor.CompileErrorCode        == tmp.CompileErrorCode
-        #               && _compilerOutputCursor.SysPropertyName         == tmp.SysPropertyName
-        #               && _compilerOutputCursor.SysCompilerOutputTab    == tmp.SysCompilerOutputTab;
-        #
-        #        _compilerOutputCursor.TreeNodePath             = tmp.TreeNodePath;
-        #        _compilerOutputCursor.Line                     = tmp.Line;
-        #        _compilerOutputCursor.Column                   = tmp.Column;
-        #        _compilerOutputCursor.CompileErrorCode         = tmp.CompileErrorCode;
-        #
-        #        _compilerOutputCursor.CompileErrorString       = tmp.CompileErrorString;
-        #        _compilerOutputCursor.UtilElementType          = tmp.UtilElementType;
-        #        _compilerOutputCursor.SysUtilElementName       = tmp.SysUtilElementName;
-        #        _compilerOutputCursor.SysCompilerSeverity      = tmp.SysCompilerSeverity;
-        #        _compilerOutputCursor.CompileErrorImage        = tmp.CompileErrorImage;
-        #        _compilerOutputCursor.LatestCompile            = true;
-        #        _compilerOutputCursor.SysPropertyName          = tmp.SysPropertyName;
-        #        _compilerOutputCursor.SysCompilerOutputTab     = tmp.SysCompilerOutputTab;
-        #        _compilerOutputCursor.SysCompileErrorMessage   = tmp.SysCompileErrorMessage;
-        #        _compilerOutputCursor.SysAotMethodName         = tmp.SysAotMethodName;
-        #        _compilerOutputCursor.UtilElementImage         = tmp.UtilElementImage;
-        #        _compilerOutputCursor.CompileErrorCode         = tmp.CompileErrorCode;
-        #        _compilerOutputCursor.write();
-        #    }
-        #}
-      ENDSOURCE
       SOURCE #createFromCompilerOutput
         #// Sergey Barkar, 26/10/2025 N
-        #public static void createFromCompilerOutput(TmpCompilerOutput _compilerOutputCursor)
+        #public static void createFromCompilerOutput(RecId _processId, TmpCompilerOutput _compilerOutputCursor)
         #{
         #    TaskBasedCompileResult result;
         #    ;
         #
-        #    result.Severity = SysCompilerSeverity::Error;
+        #    result.ProcessId = _processId;
+        #    result.Severity  = SysCompilerSeverity::Error;
         #
         #    while select _compilerOutputCursor
         #        where _compilerOutputCursor.SysCompilerSeverity == result.Severity
         #    {
         #        result.XML = _compilerOutputCursor.xml();
         #        result.insert();
-        #    }
-        #}
-      ENDSOURCE
-      SOURCE #importIntoCompilerOutput
-        #public static void importIntoCompilerOutput()
-        #{
-        #    SysCompilerOutput      compilerOutputObject = SysDictClass::as(infolog.compilerOutput(), classNum(SysCompilerOutput));
-        #    TaskBasedCompileResult compileResult;
-        #    ;
-        #
-        #    if (compilerOutputObject)
-        #    {
-        #        compilerOutputObject.reset(true);
-        #
-        #        while select compileResult
-        #        {
-        #            compileResult.writeIntoCompilerOutput(compilerOutputObject.compilerOutput());
-        #        }
-        #
-        #        compilerOutputObject.endCompilation();
-        #        compilerOutputObject.updateCounters();
         #    }
         #}
       ENDSOURCE
@@ -722,6 +874,20 @@ Formatversion: 1
           Table               #TaskBasedCompileProcess
         ENDPROPERTIES
         
+      FIELD #Infologs
+        QUEUE
+        PROPERTIES
+          Name                #Infologs
+          AllowEditOnCreate   #No
+          AllowEdit           #No
+          Table               #TaskBasedCompileProcess
+          ExtendedDataType    
+            ARRAY 
+              #InfologData
+              #
+            ENDARRAY
+        ENDPROPERTIES
+        
     ENDFIELDS
     GROUPS
     ENDGROUPS
@@ -742,9 +908,15 @@ Formatversion: 1
     ENDREFERENCES
     
     DELETEACTIONS
-      #TaskBasedCompileWorkLoadData
+      #TaskBasedCompileResult
       PROPERTIES
-        Table               #TaskBasedCompileWorkLoadData
+        Table               #TaskBasedCompileResult
+        DeleteAction        #Cascade
+      ENDPROPERTIES
+      
+      #TaskBasedCompileWorkRange
+      PROPERTIES
+        Table               #TaskBasedCompileWorkRange
         DeleteAction        #Cascade
       ENDPROPERTIES
       
@@ -752,13 +924,13 @@ Formatversion: 1
     
     METHODS
       Version: 3
-      SOURCE #getWorkLoadData
+      SOURCE #getWorkRange
         #// Sergey Barkar, 26/10/2025 N
-        #public TaskBasedCompileWorkLoadData getWorkLoadData()
+        #public TaskBasedCompileWorkRange getWorkRange()
         #{
         #    ;
         #
-        #    return TaskBasedCompileWorkLoadData::find(this.RecId);
+        #    return TaskBasedCompileWorkRange::find(this.RecId);
         #}
       ENDSOURCE
       SOURCE #setActive
@@ -791,8 +963,9 @@ Formatversion: 1
         #
         #        this.reread();
         #
-        #        this.EndDT  = DateTimeUtil::utcNow();
-        #        this.Status = TaskBasedCompileProcessStatus::Done;
+        #        this.EndDT    = DateTimeUtil::utcNow();
+        #        this.Status   = TaskBasedCompileProcessStatus::Done;
+        #        this.Infologs = infolog.infologData();
         #        this.update();
         #
         #        ttsCommit;
@@ -839,23 +1012,22 @@ Formatversion: 1
         #    return ret;
         #}
       ENDSOURCE
-      SOURCE #clear
+      SOURCE #deleteAll
         #// Sergey Barkar, 26/10/2025 N
-        #public static server void clear()
+        #public static server void deleteAll()
         #{
         #    TaskBasedCompileProcess processRecord;
-        #    TaskBasedCompileResult  resultRecord;
         #    ;
         #
         #    ttsBegin;
         #
         #    delete_from processRecord;
-        #    delete_from resultRecord;
         #
         #    ttsCommit;
         #}
       ENDSOURCE
       SOURCE #getCountByStatus
+        #// Sergey Barkar, 26/10/2025 N
         #public static server int64 getCountByStatus(TaskBasedCompileProcessStatus _status)
         #{
         #    ;
@@ -883,15 +1055,15 @@ Formatversion: 1
 
 ***Element: DBT
 
-; Microsoft Dynamics AX Table : TaskBasedCompileWorkLoadData unloaded
+; Microsoft Dynamics AX Table : TaskBasedCompileWorkRange unloaded
 ; --------------------------------------------------------------------------------
   TABLEVERSION 1
   
-  TABLE #TaskBasedCompileWorkLoadData
+  TABLE #TaskBasedCompileWorkRange
     PROPERTIES
-      Name                #TaskBasedCompileWorkLoadData
+      Name                #TaskBasedCompileWorkRange
       TitleField1         #ParentNodePath
-      TitleField2         #SessionId
+      TitleField2         #ProcessId
       MaxAccessMode       #View
       SaveDataPerCompany  #No
       TableGroup          #WorksheetLine
@@ -904,22 +1076,9 @@ Formatversion: 1
         STRING
         PROPERTIES
           Name                #ParentNodePath
-          Table               #TaskBasedCompileWorkLoadData
-          StringSize          #255
-        ENDPROPERTIES
-        
-      FIELD #SessionId
-        INT64
-        PROPERTIES
-          Name                #SessionId
-          Table               #TaskBasedCompileWorkLoadData
-        ENDPROPERTIES
-        
-      FIELD #FirstNodeName
-        STRING
-        PROPERTIES
-          Name                #FirstNodeName
-          Table               #TaskBasedCompileWorkLoadData
+          AllowEditOnCreate   #No
+          AllowEdit           #No
+          Table               #TaskBasedCompileWorkRange
           StringSize          #255
         ENDPROPERTIES
         
@@ -927,7 +1086,9 @@ Formatversion: 1
         INT
         PROPERTIES
           Name                #NodesToCompile
-          Table               #TaskBasedCompileWorkLoadData
+          AllowEditOnCreate   #No
+          AllowEdit           #No
+          Table               #TaskBasedCompileWorkRange
         ENDPROPERTIES
         
       FIELD #IsSkipOutput
@@ -936,8 +1097,27 @@ Formatversion: 1
           Name                #IsSkipOutput
           AllowEditOnCreate   #No
           AllowEdit           #No
-          Table               #TaskBasedCompileWorkLoadData
+          Table               #TaskBasedCompileWorkRange
           EnumType            #NoYes
+        ENDPROPERTIES
+        
+      FIELD #ProcessId
+        INT64
+        PROPERTIES
+          Name                #ProcessId
+          AllowEditOnCreate   #No
+          AllowEdit           #No
+          Table               #TaskBasedCompileWorkRange
+        ENDPROPERTIES
+        
+      FIELD #StartNodeName
+        STRING
+        PROPERTIES
+          Name                #StartNodeName
+          AllowEditOnCreate   #No
+          AllowEdit           #No
+          Table               #TaskBasedCompileWorkRange
+          StringSize          #255
         ENDPROPERTIES
         
     ENDFIELDS
@@ -952,7 +1132,7 @@ Formatversion: 1
       ENDPROPERTIES
       
       INDEXFIELDS
-        #SessionId
+        #ProcessId
       ENDINDEXFIELDS
       
     ENDINDICES
@@ -966,7 +1146,7 @@ Formatversion: 1
         FIELDREFERENCES
           REFERENCETYPE NORMAL
           PROPERTIES
-            Field               #SessionId
+            Field               #ProcessId
             RelatedField        #RecId
           ENDPROPERTIES
           
@@ -979,6 +1159,15 @@ Formatversion: 1
     
     METHODS
       Version: 3
+      SOURCE #generateNewProcessId
+        #// Sergey Barkar, 26/10/2025 N
+        #public void generateNewProcessId()
+        #{
+        #    ;
+        #
+        #    this.ProcessId = TaskBasedCompileProcess::newId();
+        #}
+      ENDSOURCE
       SOURCE #initFromTreeNode
         #// Sergey Barkar, 26/10/2025 N
         #public void initFromTreeNode(TreeNode _firstNode)
@@ -987,16 +1176,7 @@ Formatversion: 1
         #    ;
         #
         #    this.NodesToCompile = #INT_DEFAULT;
-        #    this.FirstNodeName  = _firstNode.treeNodeName();
-        #}
-      ENDSOURCE
-      SOURCE #intNewTaskId
-        #// Sergey Barkar, 26/10/2025 N
-        #public void intNewTaskId()
-        #{
-        #    ;
-        #
-        #    this.SessionId = TaskBasedCompileProcess::newId();
+        #    this.StartNodeName  = _firstNode.treeNodeName();
         #}
       ENDSOURCE
       SOURCE #isOverload
@@ -1010,15 +1190,15 @@ Formatversion: 1
       ENDSOURCE
       SOURCE #find
         #// Sergey Barkar, 26/10/2025 N
-        #public static TaskBasedCompileWorkLoadData find(RecId _sessionId)
+        #public static TaskBasedCompileWorkRange find(RecId _processId)
         #{
-        #    TaskBasedCompileWorkLoadData ret;
+        #    TaskBasedCompileWorkRange ret;
         #    ;
         #
-        #    if (_sessionId)
+        #    if (_processId)
         #    {
         #        select firstOnly ret
-        #            where ret.SessionId == _sessionId;
+        #            where ret.ProcessId == _processId;
         #    }
         #
         #    return ret;
@@ -1090,6 +1270,20 @@ Formatversion: 1
         PreventEditProperties #No
       ENDPROPERTIES
       
+      BEGINNODE
+        FILETYPE 0
+        UTILTYPE 45
+        UTILOBJECTID 35202
+        NODETYPE 329
+        NAME #TaskBasedCompileCoordinationResult
+      ENDNODE
+      BEGINNODE
+        FILETYPE 0
+        UTILTYPE 45
+        UTILOBJECTID 35199
+        NODETYPE 329
+        NAME #TaskBasedCompileCoordinator
+      ENDNODE
       BEGINNODE
         FILETYPE 0
         UTILTYPE 45
@@ -1172,7 +1366,7 @@ Formatversion: 1
           UTILTYPE 44
           UTILOBJECTID 32695
           NODETYPE 204
-          NAME #TaskBasedCompileWorkLoadData
+          NAME #TaskBasedCompileWorkRange
         ENDNODE
         ENDGROUP
         
