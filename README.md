@@ -48,7 +48,7 @@ private boolean tryToExecuteTaskBasedCompileApplication(XmlNode _command)
 
         if (coordinator.tryToCreateTasks(taskCompileNodesPerTask))
         {
-            ret = coordinator.executeWorkers(taskCompileWorkerCount).await().publish();
+            ret = coordinator.executeWorkers(taskCompileWorkerCount).awaitResult().publish();
         }
 
         coordinator.finalize();
@@ -118,8 +118,9 @@ Use the standard `CompileApplication` command with additional attributes:
 
 ## ⚠️ Warning
 
-The number of root AOT branches is hardcoded in the `TaskBasedCompileProcessCreator` class for performance optimization. 
-Extend this class if your environment requires compiling additional AOT branch types.
+> The number of root AOT branches is hardcoded in the `TaskBasedCompileProcessCreator` class for performance optimization. Extend this class if your environment requires compiling additional AOT branch types.
+
+> The `TaskBasedCompileResult` table stores only errors by default. Modify `createFromCompilerOutput` to capture additional compiler output (warnings/info messages).
 
 ## 🤝 Contributing
 

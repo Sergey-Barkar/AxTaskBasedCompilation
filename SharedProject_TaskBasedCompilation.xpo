@@ -9,13 +9,23 @@ Formatversion: 1
   
   SOURCE #TaskBasedCompilation
     #// Sergey Barkar, 25/07/2026 N
-    ##DEFINE.LIKECONFIGURATIONFILE('*.axc')
-    ##DEFINE.CONFIGURATIONSHIELDING('"\%1"')
-    ##DEFINE.STARTUPCMD_TASKBASEDCOMPILE('taskbasedcompile')
-    ##DEFINE.STARTUPCMD_PARAM_WORKER('worker')
-    ##DEFINE.PARAMETERS_SEPARATOR(':')
-    ##DEFINE.PROGRESSBARTEXT('Компиляция')
-    ##DEFINE.STARTUPCOMMAND_FORMAT(' -startupcmd=\%1_\%2 -INTERNAL=NOMODALBOXES')
+    ##DEFINE.AX_CLIENT_EXE_PATTERN('*ax32.exe')
+    ##DEFINE.AX_CLIENT_CONFIGFILE_PATTERN('*.axc')
+    ##DEFINE.AX_CLIENT_PARAMETER_NOMODALBOXES('-INTERNAL=NOMODALBOXES')
+    ##DEFINE.AX_CLIENT_PARAMETER_STARTUPCMD_PATTERN('-startupcmd=*')
+    ##DEFINE.AX_CLIENT_PARAMETER_STARTUPCMD_FORMAT('-startupcmd=\%1')
+    ##DEFINE.AX_CLIENT_PARAMETER_SEPARATOR(' ')
+    #
+    ##DEFINE.PARAMETER_SHIELDING_FORMAT('"\%1"')
+    #
+    ##DEFINE.TASK_COMPILE_COORDINATOR_CMD('taskbasedcompile')
+    ##DEFINE.TASK_COMPILE_COORDINATOR_PARAMETERS_SEPARATOR(':')
+    #
+    ##DEFINE.TASK_COMPILE_WORKER_CMD('taskbasedcompile_worker')
+    ##DEFINE.TASK_COMPILE_WORKER_PARAMETER('worker')
+    #
+    ##DEFINE.PROGRESSBAR_TEXT('Компиляция')
+    #
   ENDSOURCE
 
 ***Element: JOB
@@ -63,6 +73,55 @@ Formatversion: 1
     
     METHODS
       Version: 3
+      SOURCE #wait
+        #public void wait()
+        #{
+        #    SysOperationProgress progress = SysOperationProgress::newGeneral(#AviUpdate, #PROGRESSBAR_TEXT, this.getProcessRecordsTotal());
+        #    #DEFINE.FIVESECONDS(5000)
+        #    ;
+        #
+        #    do
+        #    {
+        #        progress.setCount(TaskBasedCompileProcess::getCountByStatus(TaskBasedCompileProcessStatus::Done));
+        #
+        #        sleep(#FIVESECONDS);
+        #        infolog.yield();
+        #    }
+        #    while (progress.getCount_RU() != progress.getTotal());
+        #
+        #    progress.reset();
+        #    progress = null;
+        #}
+      ENDSOURCE
+      SOURCE #awaitResult
+        #public TaskBasedCompileCoordinationResult awaitResult()
+        #{
+        #    ;
+        #
+        #    this.wait();
+        #
+        #    return this.getResult();
+        #}
+      ENDSOURCE
+      SOURCE #classDeclaration
+        #// Sergey Barkar, 29/07/2026 N
+        #class TaskBasedCompileWorkersFuture
+        #{
+        #    List  workerProcessIds;
+        #    int64 processRecordsTotal;
+        #
+        #    #AviFiles
+        #    #TaskBasedCompilation
+        #}
+      ENDSOURCE
+      SOURCE #finalize
+        #public void finalize()
+        #{
+        #    ;
+        #
+        #    workerProcessIds = null;
+        #}
+      ENDSOURCE
       SOURCE #getProcessRecordsDone
         #private int64 getProcessRecordsDone()
         #{
@@ -100,53 +159,12 @@ Formatversion: 1
         #    return this.getProcessRecordsTotal() == this.getProcessRecordsDone();
         #}
       ENDSOURCE
-      SOURCE #finalize
-        #public void finalize()
-        #{
-        #    ;
-        #
-        #    workerProcessIds = null;
-        #}
-      ENDSOURCE
-      SOURCE #classDeclaration
-        #// Sergey Barkar, 29/07/2026 N
-        #class TaskBasedCompileWorkersFuture
-        #{
-        #    List  workerProcessIds;
-        #    int64 processRecordsTotal;
-        #
-        #    #AviFiles
-        #    #TaskBasedCompilation
-        #}
-      ENDSOURCE
       SOURCE #new
         #public void new(List _workerProcessIds)
         #{
         #    ;
         #
         #    workerProcessIds = _workerProcessIds;
-        #}
-      ENDSOURCE
-      SOURCE #await
-        #public TaskBasedCompileCoordinationResult await()
-        #{
-        #    SysOperationProgress progress = SysOperationProgress::newGeneral(#AviUpdate, #PROGRESSBARTEXT, this.getProcessRecordsTotal());
-        #    #DEFINE.FIVESECONDS(5000)
-        #    ;
-        #
-        #    do
-        #    {
-        #        progress.setCount(TaskBasedCompileProcess::getCountByStatus(TaskBasedCompileProcessStatus::Done));
-        #
-        #        sleep(#FIVESECONDS);
-        #        infolog.yield();
-        #    }
-        #    while (progress.getCount_RU() != progress.getTotal());
-        #
-        #    progress.reset();
-        #    progress = null;
-        #
-        #    return this.getResult();
         #}
       ENDSOURCE
     ENDMETHODS
@@ -284,6 +302,28 @@ Formatversion: 1
     
     METHODS
       Version: 3
+      SOURCE #isAllowedProcessParameter
+        #private boolean isAllowedProcessParameter(str _parameter)
+        #{
+        #    boolean ret = true;
+        #    ;
+        #
+        #    if (_parameter == #AX_CLIENT_PARAMETER_NOMODALBOXES)
+        #    {
+        #        ret = false;
+        #    }
+        #    else if (_parameter like #AX_CLIENT_PARAMETER_STARTUPCMD_PATTERN)
+        #    {
+        #        ret = false;
+        #    }
+        #    else if (_parameter like #AX_CLIENT_EXE_PATTERN)
+        #    {
+        #        ret = false;
+        #    }
+        #
+        #    return ret;
+        #}
+      ENDSOURCE
       SOURCE #classDeclaration
         #// Sergey Barkar, 29/07/2026 N
         #class TaskBasedCompileCoordinator
@@ -350,25 +390,33 @@ Formatversion: 1
       SOURCE #getWorkerProcessParameters
         #private str getWorkerProcessParameters()
         #{
+        #    List                           parameters = new List(Types::String);
         #    System.String[]                args       = System.Environment::GetCommandLineArgs();
         #    System.Collections.IEnumerator enumerator = args.GetEnumerator();
-        #    str                            strParameter,
-        #                                   ret;
+        #    str                            strParameter;
+        #    #DEFINE.AX_CLIENT_PARAMETER_SEPARATOR(' ')
+        #    #DEFINE.FIRSTITEMID(1)
+        #    #DEFINE.LISTMETAITEMS(3)
         #    ;
         #
-        #    while (!ret && enumerator.MoveNext())
+        #    while (enumerator.MoveNext())
         #    {
         #        strParameter = enumerator.get_Current();
         #
-        #        if (strParameter like #LIKECONFIGURATIONFILE)
+        #        if (strParameter like #AX_CLIENT_CONFIGFILE_PATTERN)
         #        {
-        #            ret = strFmt(#CONFIGURATIONSHIELDING, strParameter);
+        #            parameters.addEnd(strFmt(#PARAMETER_SHIELDING_FORMAT, strParameter));
+        #        }
+        #        else if (this.isAllowedProcessParameter(strParameter))
+        #        {
+        #            parameters.addEnd(strParameter);
         #        }
         #    }
         #
-        #    ret += strFmt(#STARTUPCOMMAND_FORMAT, #STARTUPCMD_TASKBASEDCOMPILE, #STARTUPCMD_PARAM_WORKER);
+        #    parameters.addEnd(strFmt(#AX_CLIENT_PARAMETER_STARTUPCMD_FORMAT, #TASK_COMPILE_WORKER_CMD));
+        #    parameters.addEnd(#AX_CLIENT_PARAMETER_NOMODALBOXES);
         #
-        #    return ret;
+        #    return con2str(conDel(parameters.pack(), #FIRSTITEMID, #LISTMETAITEMS), #AX_CLIENT_PARAMETER_SEPARATOR);
         #}
       ENDSOURCE
       SOURCE #new
@@ -376,7 +424,7 @@ Formatversion: 1
         #{
         #    ;
         #
-        #    isXRefEnabled    = xUserInfo::debugInfo_XReferences();
+        #    isXRefEnabled = xUserInfo::debugInfo_XReferences();
         #}
       ENDSOURCE
       SOURCE #tryToCreateTasks
@@ -423,7 +471,7 @@ Formatversion: 1
         #
         #    switch (parm)
         #    {
-        #        case #STARTUPCMD_PARAM_WORKER :
+        #        case #TASK_COMPILE_WORKER_PARAMETER :
         #            this.runWorker();
         #            break;
         #        default :
@@ -442,11 +490,11 @@ Formatversion: 1
         #                                nodesPerTask;
         #    ;
         #
-        #    [workerCount, nodesPerTask] = str2con(parm, #PARAMETERS_SEPARATOR);
+        #    [workerCount, nodesPerTask] = str2con(parm, #TASK_COMPILE_COORDINATOR_PARAMETERS_SEPARATOR);
         #
         #    if (coordinator.tryToCreateTasks(nodesPerTask))
         #    {
-        #        coordinator.executeWorkers(workerCount).await().publish();
+        #        coordinator.executeWorkers(workerCount).awaitResult().publish();
         #    }
         #
         #    coordinator.finalize();
@@ -1007,15 +1055,6 @@ Formatversion: 1
     
     METHODS
       Version: 3
-      SOURCE #getCount
-        #// Sergey Barkar, 26/10/2025 N
-        #public static server int64 getCount()
-        #{
-        #    ;
-        #
-        #    return (select count(RecId) from TaskBasedCompileProcess).RecId;
-        #}
-      ENDSOURCE
       SOURCE #getWorkRange
         #// Sergey Barkar, 26/10/2025 N
         #public TaskBasedCompileWorkRange getWorkRange()
@@ -1116,6 +1155,15 @@ Formatversion: 1
         #    delete_from processRecord;
         #
         #    ttsCommit;
+        #}
+      ENDSOURCE
+      SOURCE #getCount
+        #// Sergey Barkar, 26/10/2025 N
+        #public static server int64 getCount()
+        #{
+        #    ;
+        #
+        #    return (select count(RecId) from TaskBasedCompileProcess).RecId;
         #}
       ENDSOURCE
       SOURCE #getCountByStatus
