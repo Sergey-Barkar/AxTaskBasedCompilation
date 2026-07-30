@@ -50,6 +50,110 @@ Formatversion: 1
 
 ***Element: CLS
 
+; Microsoft Dynamics AX Class: TaskBasedCompileWorkersFuture выгружен
+; --------------------------------------------------------------------------------
+  CLSVERSION 1
+  
+  CLASS #TaskBasedCompileWorkersFuture
+    PROPERTIES
+      Name                #TaskBasedCompileWorkersFuture
+      Extends             #
+      RunOn               #Called from
+    ENDPROPERTIES
+    
+    METHODS
+      Version: 3
+      SOURCE #getProcessRecordsDone
+        #private int64 getProcessRecordsDone()
+        #{
+        #    ;
+        #
+        #    return TaskBasedCompileProcess::getCountByStatus(TaskBasedCompileProcessStatus::Done);
+        #}
+      ENDSOURCE
+      SOURCE #getProcessRecordsTotal
+        #private int64 getProcessRecordsTotal()
+        #{
+        #    ;
+        #
+        #    if (!processRecordsTotal)
+        #    {
+        #        processRecordsTotal = TaskBasedCompileProcess::getCount();
+        #    }
+        #
+        #    return processRecordsTotal;
+        #}
+      ENDSOURCE
+      SOURCE #getResult
+        #public TaskBasedCompileCoordinationResult getResult()
+        #{
+        #    ;
+        #
+        #    return new TaskBasedCompileCoordinationResult();
+        #}
+      ENDSOURCE
+      SOURCE #isDone
+        #public boolean isDone()
+        #{
+        #    ;
+        #
+        #    return this.getProcessRecordsTotal() == this.getProcessRecordsDone();
+        #}
+      ENDSOURCE
+      SOURCE #finalize
+        #public void finalize()
+        #{
+        #    ;
+        #
+        #    workerProcessIds = null;
+        #}
+      ENDSOURCE
+      SOURCE #classDeclaration
+        #// Sergey Barkar, 29/07/2026 N
+        #class TaskBasedCompileWorkersFuture
+        #{
+        #    List  workerProcessIds;
+        #    int64 processRecordsTotal;
+        #
+        #    #AviFiles
+        #    #TaskBasedCompilation
+        #}
+      ENDSOURCE
+      SOURCE #new
+        #public void new(List _workerProcessIds)
+        #{
+        #    ;
+        #
+        #    workerProcessIds = _workerProcessIds;
+        #}
+      ENDSOURCE
+      SOURCE #await
+        #public TaskBasedCompileCoordinationResult await()
+        #{
+        #    SysOperationProgress progress = SysOperationProgress::newGeneral(#AviUpdate, #PROGRESSBARTEXT, this.getProcessRecordsTotal());
+        #    #DEFINE.FIVESECONDS(5000)
+        #    ;
+        #
+        #    do
+        #    {
+        #        progress.setCount(TaskBasedCompileProcess::getCountByStatus(TaskBasedCompileProcessStatus::Done));
+        #
+        #        sleep(#FIVESECONDS);
+        #        infolog.yield();
+        #    }
+        #    while (progress.getCount_RU() != progress.getTotal());
+        #
+        #    progress.reset();
+        #    progress = null;
+        #
+        #    return this.getResult();
+        #}
+      ENDSOURCE
+    ENDMETHODS
+  ENDCLASS
+
+***Element: CLS
+
 ; Microsoft Dynamics AX Class: TaskBasedCompileCoordinationResult выгружен
 ; --------------------------------------------------------------------------------
   CLSVERSION 1
@@ -94,7 +198,7 @@ Formatversion: 1
         #}
       ENDSOURCE
       SOURCE #publish
-        #public void publish()
+        #public boolean publish()
         #{
         #    ;
         #
@@ -102,6 +206,8 @@ Formatversion: 1
         #    this.importIntoCompilerOutput();
         #
         #    SysCompilerOutput::exportLog();
+        #
+        #    return true;
         #}
       ENDSOURCE
       SOURCE #viewInfologs
@@ -178,33 +284,11 @@ Formatversion: 1
     
     METHODS
       Version: 3
-      SOURCE #awaitWorkers
-        #public TaskBasedCompileCoordinationResult awaitWorkers()
-        #{
-        #    SysOperationProgress progress = SysOperationProgress::newGeneral(#AviUpdate, #PROGRESSBARTEXT, TaskBasedCompileProcess::getCountByStatus(TaskBasedCompileProcessStatus::Idle));
-        #    #DEFINE.FIVESECONDS(5000)
-        #    ;
-        #
-        #    do
-        #    {
-        #        progress.setCount(TaskBasedCompileProcess::getCountByStatus(TaskBasedCompileProcessStatus::Done));
-        #
-        #        sleep(#FIVESECONDS);
-        #        infolog.yield();
-        #    }
-        #    while (progress.getCount_RU() != progress.getTotal());
-        #
-        #    progress.reset();
-        #    progress = null;
-        #
-        #    return new TaskBasedCompileCoordinationResult();
-        #}
-      ENDSOURCE
       SOURCE #classDeclaration
         #// Sergey Barkar, 29/07/2026 N
         #class TaskBasedCompileCoordinator
         #{
-        #    List workerProcessIds;
+        #    boolean isXRefEnabled;
         #
         #    #AviFiles
         #    #TaskBasedCompilation
@@ -230,18 +314,26 @@ Formatversion: 1
         #}
       ENDSOURCE
       SOURCE #executeWorkers
-        #public void executeWorkers(int _count)
+        #public TaskBasedCompileWorkersFuture executeWorkers(int _count)
         #{
+        #    List     workerProcessIds       = new List(Types::Integer);
         #    str      workerClientParameters = this.getWorkerProcessParameters();
         #    FileName workerClientFileName   = xInfo::componentName();
         #    #DEFINE.ZERO(0)
         #    ;
+        #
+        #    if (isXRefEnabled)
+        #    {
+        #        xUserInfo::debugInfo_XReferences(false);
+        #    }
         #
         #    while (_count > #ZERO)
         #    {
         #        workerProcessIds.addEnd(this.executeWorkerProcess(workerClientFileName, workerClientParameters));
         #        _count--;
         #    }
+        #
+        #    return new TaskBasedCompileWorkersFuture(workerProcessIds);
         #}
       ENDSOURCE
       SOURCE #finalize
@@ -249,7 +341,10 @@ Formatversion: 1
         #{
         #    ;
         #
-        #    workerProcessIds = null;
+        #    if (isXRefEnabled)
+        #    {
+        #        xUserInfo::debugInfo_XReferences(true);
+        #    }
         #}
       ENDSOURCE
       SOURCE #getWorkerProcessParameters
@@ -281,7 +376,7 @@ Formatversion: 1
         #{
         #    ;
         #
-        #    workerProcessIds = new List(Types::Integer);
+        #    isXRefEnabled    = xUserInfo::debugInfo_XReferences();
         #}
       ENDSOURCE
       SOURCE #tryToCreateTasks
@@ -345,28 +440,16 @@ Formatversion: 1
         #    TaskBasedCompileCoordinator coordinator = new TaskBasedCompileCoordinator();
         #    int                         workerCount,
         #                                nodesPerTask;
-        #    boolean                     isXRefEnabled = xUserInfo::debugInfo_XReferences();
         #    ;
         #
         #    [workerCount, nodesPerTask] = str2con(parm, #PARAMETERS_SEPARATOR);
         #
-        #    if (isXRefEnabled)
-        #    {
-        #        xUserInfo::debugInfo_XReferences(false);
-        #    }
-        #
         #    if (coordinator.tryToCreateTasks(nodesPerTask))
         #    {
-        #        coordinator.executeWorkers(workerCount);
-        #        coordinator.awaitWorkers().publish();
+        #        coordinator.executeWorkers(workerCount).await().publish();
         #    }
         #
         #    coordinator.finalize();
-        #
-        #    if (isXRefEnabled)
-        #    {
-        #        xUserInfo::debugInfo_XReferences(true);
-        #    }
         #}
       ENDSOURCE
       SOURCE #runWorker
@@ -924,6 +1007,15 @@ Formatversion: 1
     
     METHODS
       Version: 3
+      SOURCE #getCount
+        #// Sergey Barkar, 26/10/2025 N
+        #public static server int64 getCount()
+        #{
+        #    ;
+        #
+        #    return (select count(RecId) from TaskBasedCompileProcess).RecId;
+        #}
+      ENDSOURCE
       SOURCE #getWorkRange
         #// Sergey Barkar, 26/10/2025 N
         #public TaskBasedCompileWorkRange getWorkRange()
@@ -1270,6 +1362,13 @@ Formatversion: 1
         PreventEditProperties #No
       ENDPROPERTIES
       
+      BEGINNODE
+        FILETYPE 0
+        UTILTYPE 45
+        UTILOBJECTID 35204
+        NODETYPE 329
+        NAME #TaskBasedCompileWorkersFuture
+      ENDNODE
       BEGINNODE
         FILETYPE 0
         UTILTYPE 45
