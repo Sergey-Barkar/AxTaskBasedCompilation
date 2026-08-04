@@ -545,6 +545,8 @@ Formatversion: 1
         #        compileNode.AOTcompile(_workRangeRecord.IsSkipOutput, true);
         #        compiledNodes++;
         #    }
+        #
+        #    parentNode.treeNodeRelease();
         #}
       ENDSOURCE
       SOURCE #handleOutput
